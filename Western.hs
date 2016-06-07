@@ -30,6 +30,7 @@ testMap = listArray ((1,1),(6,5)) $
 
 testState1 = ((1,1,False), (5,5,False)) :: GameState
 testState2 = ((4,4,False), (5,5,False)) :: GameState
+testState3 = ((4,1,True), (6,3,False)) :: GameState
 
 ------
 
@@ -138,18 +139,23 @@ canShoot map p1 p2 =
   foldr (\(x,y) o -> (map ! (x,y) /= 'x') && o) True (line p1 p2)
 
 playAsFirstPlayer :: Turn -> Map -> GameState  -> Maybe (Either GameState Outcome)
-playAsFirstPlayer t map ((x1,y1,s1), (x2,y2,s2))
-  | s2 && (canShoot map (x1,y1) (x2,y2)) = Just (Right Player1Won)
-  | s1 && (canShoot map (x1,y1) (x2,y2)) = Just (Right Player2Won)
-  | otherwise = do
-      let (dx,dy,s) = case t of
-                        L -> (-1,0,False)
-                        R -> (1,0,False)
-                        D -> (0,1,False)
-                        U -> (0,-1,False)
-                        S -> (0,0,False)
-                        Fire -> (0,0,True)
-      state1 <- boundaryCheck map (dx,dy) ((x1,y1,s1), (x2,y2,s2))
-      return (Left state1)
+playAsFirstPlayer t map st =
+  do 
+    let (dx,dy,s) = case t of
+                      L -> (-1,0,False)
+                      R -> (1,0,False)
+                      D -> (0,1,False)
+                      U -> (0,-1,False)
+                      S -> (0,0,False)
+                      Fire -> (0,0,True)
+    st' <- boundaryCheck map (dx,dy) st
+    let ((x1,y1,s1),(x2,y2,s2)) = st
+    let ((x1',y1',_),(_,_,_)) = st'
+    let shoot 
+          | s2 && (canShoot map (x1',y1') (x2,y2)) = Right Player2Won
+          | s1 && (canShoot map (x1',y1') (x2,y2)) = Right Player1Won
+          | otherwise = Left st'
+      in return $ shoot 
+
 
 main = undefined
