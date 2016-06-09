@@ -1,3 +1,4 @@
+module Western where
 
 import Data.List
 import Data.Array
@@ -22,10 +23,10 @@ data Turn = L | R | U | D | S | Fire deriving (Show, Eq)
 testMap :: Map
 testMap = listArray ((1,1),(6,5)) $
   concat $ transpose [
-    ".xx.x."
-  , "...x.."
-  , "......"
-  , ".x...."
+    "......"
+  , "....x."
+  , "xxxxx."
+  , "..x..."
   , "......" ]  
 
 testState1 = ((1,1,False), (5,5,False)) :: GameState
@@ -79,12 +80,12 @@ boundaryCheck map (dx,dy) state =
     ((x1,y1,s1),(x2,y2,s2)) = state
     ((_,_),(w,h)) = bounds map
     move x1' y1' 
-      | (x1' < 1) = Nothing
-      | (x1' > w) = Nothing
-      | (y1' < 1) = Nothing
-      | (y1' > h) = Nothing
-      | (x1' == x2) && (y1' == y2 ) = Nothing
-      | map ! (x1',y1') == 'x' = Nothing
+      | (x1' < 1) = Just state
+      | (x1' > w) = Just state
+      | (y1' < 1) = Just state
+      | (y1' > h) = Just state
+      | (x1' == x2) && (y1' == y2 ) = Just state
+      | map ! (x1',y1') == 'x' = Just state
       | otherwise = Just ( ((x1', y1',s1), (x2,y2,s2)))
   in  move (x1+dx) (y1+dy) 
 
@@ -138,6 +139,9 @@ canShoot :: Map -> (Int,Int) -> (Int,Int) -> Bool
 canShoot map p1 p2 =
   foldr (\(x,y) o -> (map ! (x,y) /= 'x') && o) True (line p1 p2)
 
+shootState :: GameState -> GameState
+shootState ((x, y, z), (a, b, c)) = ((x, y, True), (a, b, c))  
+
 playAsFirstPlayer :: Turn -> Map -> GameState  -> Maybe (Either GameState Outcome)
 playAsFirstPlayer t map st =
   do 
@@ -154,8 +158,8 @@ playAsFirstPlayer t map st =
     let shoot 
           | s2 && (canShoot map (x1',y1') (x2,y2)) = Right Player2Won
           | s1 && (canShoot map (x1',y1') (x2,y2)) = Right Player1Won
+	  | s == True = Left (shootState st)
           | otherwise = Left st'
       in return $ shoot 
 
 
-main = undefined
