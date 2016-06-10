@@ -24,9 +24,9 @@ testMap :: Map
 testMap = listArray ((1,1),(6,5)) $
   concat $ transpose [
     "......"
-  , "....x."
-  , "xxxxx."
-  , "..x..."
+  , "......"
+  , "..xx.."
+  , "......"
   , "......" ]  
 
 testState1 = ((1,1,False), (5,5,False)) :: GameState

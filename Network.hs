@@ -13,8 +13,12 @@ import Western
 
 import System.IO
 
-timeout :: Int
 timeout = 100
+netSize = [6, 6]
+netNum = 10
+iterNum = 50
+bestNum = 2
+modP = 0.03
 
 ntLevelSize :: Network -> [Int]
 ntLevelSize n = (map nrows $ ntWeights n) ++ [ncols $ last $ ntWeights n]
@@ -24,14 +28,17 @@ boolToFloat False = 0
 boolToFloat True = 1
 
 stdNeuron :: Float -> Float
-stdNeuron x = 1 / (1 + exp (-x))
+stdNeuron x = 1 / (1 + exp (-x + 0.5))
 
 evalNetwork :: Network -> [Float] -> [Float] -- evaluate network on a given input
 evalNetwork net input = foldl evalColumn input (ntWeights net)
   where evalColumn col mat = map stdNeuron $ toList $ multStd mat (transpose (fromLists [col]))
 
 makeInput :: GameState -> [Float]
-makeInput ((x1, y1, b1), (x2, y2, b2)) = [fromIntegral x1, fromIntegral y1, boolToFloat b1,  fromIntegral x2, fromIntegral y2, boolToFloat b2]
+makeInput ((x1, y1, b1), (x2, y2, b2)) = [fromIntegral x1 / fromIntegral w, fromIntegral y1 / fromIntegral h, boolToFloat b1,  fromIntegral x2 / fromIntegral w, fromIntegral y2 / fromIntegral h, boolToFloat b2]
+  where 
+  ((_,_),(w,h)) = bounds testMap
+
 
 decideTurn :: [Float] -> Turn
 decideTurn [l, r, u, d, s, f] 
@@ -51,6 +58,7 @@ decideTurn [l, r, u, d, s, f]
  | l > 0.75 = L
  | u > 0.75 = U
  | d > 0.75 = D
+ | otherwise = S
 
 playGame :: Network -> Network -> (Int, Int)
 playGame p1 p2 = result $ foldl makeTurn (Just (Left ((1, 1, False), (w, h, False)))) [0..timeout]  
@@ -64,6 +72,15 @@ playGame p1 p2 = result $ foldl makeTurn (Just (Left ((1, 1, False), (w, h, Fals
   result Nothing = (0, 0)
   result (Just (Right Player1Won)) = (1, 0)
   result (Just (Right Player2Won)) = (0, 1)
+
+playNTurns :: Network -> Network -> Int -> [(Maybe (Either GameState Outcome), Int)]
+playNTurns p1 p2 n =  take n $ iterate makeTurn ((Just (Left ((1, 1, False), (w, h, False)))), 0) 
+  where
+  ((_,_),(w,h)) = bounds testMap
+  makeTurn ((Just (Right x)), m ) = (Just (Right x), m + 1 )
+  makeTurn (Just (Left x), m) 
+   | m `rem` 2 == 0 = (turn (Left (decideTurn $ evalNetwork p1 $ makeInput x)) testMap x, m + 1)
+   | otherwise = (turn (Right (decideTurn $ evalNetwork p2 $ makeInput x)) testMap x, m + 1)
 
 playTournament :: [Network] -> [Int]
 playTournament s = map (\x -> (sum $ fmap fst (getRow x table)) + (sum $ fmap snd (getCol x table))) [1..l]
@@ -104,11 +121,6 @@ perturbNetwork n magnitude = do
  return Network {ntWeights = (zipWith (elementwise (+)) a b)}
 
 
-netSize = [6, 6, 6]
-netNum = 100
-iterNum = 100
-bestNum = 10
-modP = 0.02
 
 evolveNet :: [Network] -> IO [Network]
 evolveNet nets = do
