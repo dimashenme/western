@@ -129,6 +129,8 @@ evolveNet nets = do
  third <- mapM (\x -> makeRandomNetwork netSize) [1..(netNum - 2*bestNum)]
  return $ first ++ second ++ third
 
+--main = testRender
+
 main = do
  first <- mapM (\x -> makeRandomNetwork netSize) [1..netNum]
  x <- foldr (.) id (replicate iterNum (\x -> x >>= evolveNet)) (return first)
