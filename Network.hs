@@ -7,6 +7,12 @@ import Data.Array
 import Data.List hiding (transpose)
 import System.Random
 import Control.Monad
+import Control.Concurrent
+import Graphics.Vty
+import Graphics.Vty.Image
+import Graphics.Vty.Attributes
+import Data.Default(def)
+import System.IO
 
 import Types
 import Western
@@ -15,10 +21,11 @@ import System.IO
 
 timeout = 100
 netSize = [6, 6]
-netNum = 10
+netNum = 50
 iterNum = 50
-bestNum = 2
-modP = 0.03
+bestNum = 10
+modP = 0.02
+thr = 0.6
 
 ntLevelSize :: Network -> [Int]
 ntLevelSize n = (map nrows $ ntWeights n) ++ [ncols $ last $ ntWeights n]
@@ -28,7 +35,7 @@ boolToFloat False = 0
 boolToFloat True = 1
 
 stdNeuron :: Float -> Float
-stdNeuron x = 1 / (1 + exp (-x + 0.5))
+stdNeuron x = 1 / (1 + exp (-x + 1.5))
 
 evalNetwork :: Network -> [Float] -> [Float] -- evaluate network on a given input
 evalNetwork net input = foldl evalColumn input (ntWeights net)
@@ -42,22 +49,22 @@ makeInput ((x1, y1, b1), (x2, y2, b2)) = [fromIntegral x1 / fromIntegral w, from
 
 decideTurn :: [Float] -> Turn
 decideTurn [l, r, u, d, s, f] 
- | f > 0.75 = Fire
- | s > 0.75 = S
- | l > 0.75 && r > 0.75 = S
- | u > 0.75 && d > 0.75 = S
- | l > 0.75 && u > r = U
- | r > 0.75 && r >= u = R
- | u > 0.75 && d > r = D
- | d > 0.75 && r >= d = R
- | u > 0.75 && d > l = D
- | d > 0.75 && l >= d = L
- | u > 0.75 && u > l = U
- | d > 0.75 && l >= u = L
- | r > 0.75 = R
- | l > 0.75 = L
- | u > 0.75 = U
- | d > 0.75 = D
+ | f > thr = Fire
+ | s > thr = S
+ | l > thr && r > thr = S
+ | u > thr && d > thr = S
+ | r > thr && u > r = U
+ | u > thr && r >= u = R
+ | r > thr && d > r = D
+ | d > thr && r >= d = R
+ | l > thr && d > l = D
+ | d > thr && l >= d = L
+ | l > thr && u > l = U
+ | u > thr && l >= u = L
+ | r > thr = R
+ | l > thr = L
+ | u > thr = U
+ | d > thr = D
  | otherwise = S
 
 playGame :: Network -> Network -> (Int, Int)
@@ -68,19 +75,22 @@ playGame p1 p2 = result $ foldl makeTurn (Just (Left ((1, 1, False), (w, h, Fals
   makeTurn (Just (Left x)) n 
    | n == timeout = Nothing
    | n `rem` 2 == 0 = turn (Left (decideTurn $ evalNetwork p1 $ makeInput x)) testMap x
-   | otherwise = turn (Right (decideTurn $ evalNetwork p2 $ makeInput x)) testMap x
+   | otherwise = turn (Right (decideTurn $ evalNetwork p2 $ makeInput (snd x, fst x))) testMap x
   result Nothing = (0, 0)
   result (Just (Right Player1Won)) = (1, 0)
   result (Just (Right Player2Won)) = (0, 1)
 
 playNTurns :: Network -> Network -> Int -> [(Maybe (Either GameState Outcome), Int)]
-playNTurns p1 p2 n =  take n $ iterate makeTurn ((Just (Left ((1, 1, False), (w, h, False)))), 0) 
+playNTurns p1 p2 n = gameGoesOn (take n $ iterate makeTurn ((Just (Left ((1, 1, False), (w, h, False)))), 0)) 
   where
   ((_,_),(w,h)) = bounds testMap
   makeTurn ((Just (Right x)), m ) = (Just (Right x), m + 1 )
   makeTurn (Just (Left x), m) 
    | m `rem` 2 == 0 = (turn (Left (decideTurn $ evalNetwork p1 $ makeInput x)) testMap x, m + 1)
-   | otherwise = (turn (Right (decideTurn $ evalNetwork p2 $ makeInput x)) testMap x, m + 1)
+   | otherwise = (turn (Right (decideTurn $ evalNetwork p2 $ makeInput (snd x, fst x))) testMap x, m + 1)
+  gameGoesOn [] = []
+  gameGoesOn ((Just (Left x), n) : xs) = ((Just (Left x)), n) : (gameGoesOn xs)
+  gameGoesOn ((Just (Right x), n) : xs) = [(Just (Right x), n)]
 
 playTournament :: [Network] -> [Int]
 playTournament s = map (\x -> (sum $ fmap fst (getRow x table)) + (sum $ fmap snd (getCol x table))) [1..l]
@@ -95,7 +105,7 @@ netToString :: Network -> String
 netToString n = matrices $ ntWeights n
  where 
  matrices [] = ""
- matrices (x:xs) = show (nrows x) ++ " " ++ show (ncols x) ++ "\n" ++ unlines (map getWord (toLists x)) ++ "\n" ++ matrices xs
+ matrices (x:xs) = (getWord $ toList x) ++ "\n" ++ matrices xs
  getWord s = unwords $ map show s
 
 makeRandomMatrix :: (Int,Int) -> Float -> IO (Matrix Float)
@@ -131,12 +141,41 @@ evolveNet nets = do
 
 --main = testRender
 
-main = do
+trainNet :: IO Network
+trainNet = do
  first <- mapM (\x -> makeRandomNetwork netSize) [1..netNum]
  x <- foldr (.) id (replicate iterNum (\x -> x >>= evolveNet)) (return first)
- putStr $ netToString $ head x
- test <- mapM (\x -> makeRandomNetwork netSize) [1..9]
- putStr $ show $ playTournament (head x : test) 
+ return (head x)
+
+drawBattle x y n = do
+ let pics = map (\x -> renderAnyGame testMap (fst x)) $ playNTurns x y n
+ vty <- mkVty def
+ mapM_ (drawAndWait vty) pics
+ evt <- nextEvent vty
+ shutdown vty
+  where 
+   drawAndWait scr pic = do
+    update scr pic
+    threadDelay 100000
+
+writeNetToFile :: Network -> String -> IO ()
+writeNetToFile net filename = do
+ writeFile filename (netToString net)
+
+readNetFromFile :: [Int] -> String -> IO Network
+readNetFromFile sizes filename = do
+ mats <- readFile filename
+ let nums = map stringsToFloats (lines mats)
+ return Network {ntWeights = zipWith fromListMy (zip sizes $ tail sizes) nums}
+ where 
+  stringsToFloats s = map ( \x -> read x :: Float ) (words s) 
+  fromListMy (x,y) s = fromList x y s 
+
+main = do
+ x <- trainNet
+ y <- trainNet
+ writeNetToFile x "net1"
+ writeNetToFile y "net2"
 
 --randomNetwork :: [Int] -> Float -> Network -- create random network with levels of size of the first argument and with absolute value of weights of the order of the second argument
 

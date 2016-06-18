@@ -6,8 +6,8 @@ module Western (
   Map(..),
   GameState(..),
   Outcome(..),
-  Turn(..)
-               )
+  Turn(..),
+  renderAnyGame )
 where
 
 import Data.List
@@ -82,7 +82,7 @@ turn :: Either Turn Turn -> Map -> GameState  -> Maybe (Either GameState Outcome
 turn tt map state =
   case tt of
     Left t ->  playAsFirstPlayer t map state
-    Right t -> mirror $ ((uncurry . flip . curry) (playAsFirstPlayer t map))  state
+    Right t -> mirror $ playAsFirstPlayer t map (snd state, fst state)
 
 -- | check if it is possible to move along the vector dx,dy
 -- if one ends up outside the map then return False, otherwise True
@@ -94,15 +94,16 @@ boundaryCheck :: Map -> (Int,Int) -> GameState -> Maybe GameState
 boundaryCheck map (dx,dy) state =
   let
     ((x1,y1,s1),(x2,y2,s2)) = state
+    state' = ((x1,y1,False),(x2,y2,False)) 
     ((_,_),(w,h)) = bounds map
     move x1' y1' 
-      | (x1' < 1) = Just state
-      | (x1' > w) = Just state
-      | (y1' < 1) = Just state
-      | (y1' > h) = Just state
-      | (x1' == x2) && (y1' == y2 ) = Just state
-      | map ! (x1',y1') == 'x' = Just state
-      | otherwise = Just ( ((x1', y1',s1), (x2,y2,s2)))
+      | (x1' < 1) = Just state'
+      | (x1' > w) = Just state'
+      | (y1' < 1) = Just state'
+      | (y1' > h) = Just state'
+      | (x1' == x2) && (y1' == y2 ) = Just state'
+      | map ! (x1',y1') == 'x' = Just state'
+      | otherwise = Just ( ((x1', y1',False), (x2,y2,False)))
   in  move (x1+dx) (y1+dy) 
 
 --- Brezenheim naive
@@ -173,7 +174,6 @@ playAsFirstPlayer t map st =
     let ((x1',y1',_),(_,_,_)) = st'
     let shoot
           | s2 && (canShoot map (x1',y1') (x2,y2)) = Right Player2Won
-          | s1 && (canShoot map (x1',y1') (x2,y2)) = Right Player1Won
           | s == True = Left (shootState st)
           | otherwise = Left st'
       in return $ shoot 
@@ -190,10 +190,12 @@ renderPlayers map state =
     ((_,_),(w,h)) = bounds map    
     renderLine y = foldl (\l x -> l <|> (visibleChar x y)) emptyImage [1..w]
     attrFov = Attr{attrForeColor = SetTo blue, attrStyle = Default, attrBackColor = Default}
-    attrPlayer = Attr{attrForeColor = SetTo red, attrStyle = Default, attrBackColor = Default}
+    attrPlayer False = Attr{attrForeColor = SetTo green, attrStyle = Default, attrBackColor = Default}
+    attrPlayer True = Attr{attrForeColor = SetTo red, attrStyle = Default, attrBackColor = Default}
+
     visibleChar x y 
-      | (x == x1) && (y == y1) = char attrPlayer '1'
-      | (x == x2) && (y == y2) = char attrPlayer '2'
+      | (x == x1) && (y == y1) = char (attrPlayer s1) '1'
+      | (x == x2) && (y == y2) = char (attrPlayer s2) '2'
       | (member (x,y) (fov map state)) = char attrFov (map!(x,y)) 
       | otherwise = backgroundFill 1 1 
   in   vertCat (fmap renderLine [1..h])
@@ -208,7 +210,15 @@ renderGame turn map state =
     ((x1,y1,s1),(x2,y2,s2)) = state
     ((_,_),(w,h)) = bounds map
     renderLine  y = foldl (\l x-> l ++ [map!(x,y)]) [] [1..w]
-  
+
+renderVictory :: Outcome -> Picture
+renderVictory (Player1Won) = picForImage $ string (defAttr ` withForeColor ` green) "Player 1 won"
+renderVictory (Player2Won) = picForImage $ string (defAttr ` withForeColor ` green) "Player 2 won"
+
+renderAnyGame :: Map -> Maybe (Either GameState Outcome) -> Picture
+renderAnyGame map (Just (Left x)) = renderGame 1 map x
+renderAnyGame map (Just (Right x)) = renderVictory x
+renderAnyGame map Nothing = picForImage $ string (defAttr ` withForeColor ` red) "Error"
 
 testRender = do
   vty <- mkVty def

@@ -7,3 +7,5 @@ import Data.Matrix
 
 data Network = Network {  ntWeights :: [Matrix Float] }
 
+
+
