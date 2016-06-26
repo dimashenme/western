@@ -21,11 +21,12 @@ import Graphics.Vty.Image
 import Graphics.Vty.Attributes
 import Data.Default(def)
 
+
 type Map = Array (Int, Int) Char
 
 -- | Each player is characterized by three bits of information
 -- x- and y-coordinate and a bool saying if he is about to fire
-type GameState = ((Int, Int, Bool), (Int, Int, Bool))
+type GameState = ((Int, Int, Int, Bool), (Int, Int, Int, Bool))
 
 -- | Game outcome
 data Outcome = Player1Won | Player2Won deriving (Show, Eq)
@@ -37,17 +38,19 @@ data Turn = L | R | U | D | S | Fire deriving (Show, Eq)
 --- test data
 
 testMap :: Map
-testMap = listArray ((1,1),(6,5)) $
+testMap = listArray ((1,1),(7,7)) $
   concat $ transpose [
-    "......"
-  , "..x..."
-  , ".xx.x."
-  , "......"
-  , "......" ]  
+    "......."
+  , ".xx.xx."
+  , ".xx.xx."
+  , "......."
+  , ".xx.xx."
+  , ".xx.xx."
+  , "......."]  
 
-testState1 = ((1,1,False), (5,5,False)) :: GameState
-testState2 = ((4,4,False), (5,5,False)) :: GameState
-testState3 = ((4,1,True), (6,3,False)) :: GameState
+testState1 = ((1,1,2,False), (5,5,2,False)) :: GameState
+testState2 = ((4,4,1,False), (5,5,2,False)) :: GameState
+testState3 = ((4,1,1,True), (6,3,1,False)) :: GameState
 
 ------
 
@@ -56,7 +59,7 @@ testState3 = ((4,1,True), (6,3,False)) :: GameState
 -- @map@ - the map
 -- @state@ - game state
 printMap :: Map -> GameState -> IO ()
-printMap map ((x1,y1,_),(x2,y2,_)) =
+printMap map ((x1,y1,_,_),(x2,y2,_,_)) =
   let map' = (map // [((x1,y1), '1'),((x2,y2),'2')])
       ((_,_),(w,h)) = bounds map'
       printLine _ y = putStrLn (foldl (\l x-> l ++ [map'!(x,y)]) [] [1..w]) 
@@ -67,7 +70,7 @@ printMap map ((x1,y1,_),(x2,y2,_)) =
 -- from the perspective of the first player into the returned value
 -- from the perspective of the second player
 mirror :: Maybe (Either GameState Outcome) -> Maybe (Either GameState Outcome)
-mirror (Just (Left ((x1,y1,s1), (x2,y2,s2)))) = (Just (Left ((x2,y2,s2), (x1,y1,s1))))
+mirror (Just (Left ((x1,y1,b1,s1), (x2,y2,b2,s2)))) = (Just (Left ((x2,y2,b2,s2), (x1,y1,b1,s1))))
 mirror (Just (Right Player1Won)) = (Just (Right Player2Won))
 mirror (Just (Right Player2Won)) = (Just (Right Player1Won))
 mirror Nothing = Nothing
@@ -93,8 +96,8 @@ turn tt map state =
 boundaryCheck :: Map -> (Int,Int) -> GameState -> Maybe GameState
 boundaryCheck map (dx,dy) state =
   let
-    ((x1,y1,s1),(x2,y2,s2)) = state
-    state' = ((x1,y1,False),(x2,y2,False)) 
+    ((x1,y1,b1,s1),(x2,y2,b2,s2)) = state
+    state' = ((x1,y1,b1,False),(x2,y2,b2,False)) 
     ((_,_),(w,h)) = bounds map
     move x1' y1' 
       | (x1' < 1) = Just state'
@@ -103,7 +106,7 @@ boundaryCheck map (dx,dy) state =
       | (y1' > h) = Just state'
       | (x1' == x2) && (y1' == y2 ) = Just state'
       | map ! (x1',y1') == 'x' = Just state'
-      | otherwise = Just ( ((x1', y1',False), (x2,y2,False)))
+      | otherwise = Just ( ((x1', y1',b1,False), (x2,y2,b2,False)))
   in  move (x1+dx) (y1+dy) 
 
 --- Brezenheim naive
@@ -157,21 +160,21 @@ canShoot map p1 p2 =
   foldr (\(x,y) o -> (map ! (x,y) /= 'x') && o) True (line p1 p2)
 
 shootState :: GameState -> GameState
-shootState ((x, y, z), (a, b, c)) = ((x, y, True), (a, b, c))  
+shootState ((x, y, b1, z), (a, b, b2, c)) = ((x, y, b1-1, True), (a, b, b2, c))  
 
 playAsFirstPlayer :: Turn -> Map -> GameState  -> Maybe (Either GameState Outcome)
 playAsFirstPlayer t map st =
   do 
+    let ((x1,y1,b1,s1),(x2,y2,b2,s2)) = st
     let (dx,dy,s) = case t of
                       L -> (-1,0,False)
                       R -> (1,0,False)
                       D -> (0,1,False)
                       U -> (0,-1,False)
                       S -> (0,0,False)
-                      Fire -> (0,0,True)
+                      Fire -> (0,0,(b1 > 0))
     st' <- boundaryCheck map (dx,dy) st
-    let ((x1,y1,s1),(x2,y2,s2)) = st
-    let ((x1',y1',_),(_,_,_)) = st'
+    let ((x1',y1',_,_),(_,_,_,_)) = st'
     let shoot
           | s2 && (canShoot map (x1',y1') (x2,y2)) = Right Player2Won
           | s == True = Left (shootState st)
@@ -179,23 +182,25 @@ playAsFirstPlayer t map st =
       in return $ shoot 
 
 fov :: Map -> GameState -> Set (Int,Int)
-fov map ((x1,y1,s1), (x2,y2,s2)) =
+fov map ((x1,y1,_,s1), (x2,y2,_,s2)) =
   fromList [ (x,y) | x <- [1..w], y <- [1..h], (canShoot map (x,y) (x1,y1)) || (canShoot map (x,y) (x2,y2)) ]
   where ((_,_),(w,h)) = bounds map
 
 renderPlayers :: Map -> GameState -> Image
 renderPlayers map state =
   let
-    ((x1,y1,s1),(x2,y2,s2)) = state
+    ((x1,y1,b1,s1),(x2,y2,b2,s2)) = state
     ((_,_),(w,h)) = bounds map    
     renderLine y = foldl (\l x -> l <|> (visibleChar x y)) emptyImage [1..w]
     attrFov = Attr{attrForeColor = SetTo blue, attrStyle = Default, attrBackColor = Default}
-    attrPlayer False = Attr{attrForeColor = SetTo green, attrStyle = Default, attrBackColor = Default}
-    attrPlayer True = Attr{attrForeColor = SetTo red, attrStyle = Default, attrBackColor = Default}
+    attrPlayer1 False = Attr{attrForeColor = SetTo green, attrStyle = Default, attrBackColor = Default}
+    attrPlayer1 True = Attr{attrForeColor = SetTo red, attrStyle = Default, attrBackColor = Default}
+    attrPlayer2 False = Attr{attrForeColor = SetTo green, attrStyle = Default, attrBackColor = Default}
+    attrPlayer2 True = Attr{attrForeColor = SetTo red, attrStyle = Default, attrBackColor = Default}
 
     visibleChar x y 
-      | (x == x1) && (y == y1) = char (attrPlayer s1) '1'
-      | (x == x2) && (y == y2) = char (attrPlayer s2) '2'
+      | (x == x1) && (y == y1) = char (attrPlayer1 s1) (head $ show b1)
+      | (x == x2) && (y == y2) = char (attrPlayer2 s2) (head $ show b2)
       | (member (x,y) (fov map state)) = char attrFov (map!(x,y)) 
       | otherwise = backgroundFill 1 1 
   in   vertCat (fmap renderLine [1..h])
@@ -207,7 +212,7 @@ renderGame turn map state =
   where
     renderPlayers' = renderPlayers map state
     renderMap =  vertCat (fmap (string defAttr . renderLine)  [1..h])
-    ((x1,y1,s1),(x2,y2,s2)) = state
+    ((x1,y1,b1,s1),(x2,y2,b2,s2)) = state
     ((_,_),(w,h)) = bounds map
     renderLine  y = foldl (\l x-> l ++ [map!(x,y)]) [] [1..w]
 
@@ -222,7 +227,7 @@ renderAnyGame map Nothing = picForImage $ string (defAttr ` withForeColor ` red)
 
 testRender = do
   vty <- mkVty def
-  let pic = renderGame 1 testMap ((2,2,False),(6,4,False))
+  let pic = renderGame 1 testMap ((2,2,2,False),(6,4,2,False))
   update vty pic
   evt <- nextEvent vty  
   shutdown vty
