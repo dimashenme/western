@@ -1,4 +1,4 @@
-module Western (
+module Western.Game (
   turn, 
   renderGame,
   testRender,

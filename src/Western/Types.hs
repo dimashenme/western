@@ -1,4 +1,8 @@
-module Types where
+module Western.Types (
+    Network(..)
+  )
+
+where
 
 import qualified Data.Map as M
 import Data.List
