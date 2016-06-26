@@ -24,46 +24,19 @@ import Data.Default(def)
 
 type Map = Array (Int, Int) Char
 
--- | Each player is characterized by three bits of information
--- x- and y-coordinate and a bool saying if he is about to fire
+-- | Each player is characterized by four bits of information
+-- x- and y-coordinate, number of bullets
+-- and a bool saying if he is about to fire 
 type GameState = ((Int, Int, Int, Bool), (Int, Int, Int, Bool))
 
 -- | Game outcome
 data Outcome = Player1Won | Player2Won deriving (Show, Eq)
 
--- | Choices a player can make when taking a turn               
+-- | Choices a player can make when taking a turn
+-- Left, Right, Up, Down, Skip, Fire
 data Turn = L | R | U | D | S | Fire deriving (Show, Eq)
 
 
---- test data
-
-testMap :: Map
-testMap = listArray ((1,1),(7,7)) $
-  concat $ transpose [
-    "......."
-  , ".xx.xx."
-  , ".xx.xx."
-  , "......."
-  , ".xx.xx."
-  , ".xx.xx."
-  , "......."]  
-
-testState1 = ((1,1,2,False), (5,5,2,False)) :: GameState
-testState2 = ((4,4,1,False), (5,5,2,False)) :: GameState
-testState3 = ((4,1,1,True), (6,3,1,False)) :: GameState
-
-------
-
-
--- |  Print out the dungeon with players
--- @map@ - the map
--- @state@ - game state
-printMap :: Map -> GameState -> IO ()
-printMap map ((x1,y1,_,_),(x2,y2,_,_)) =
-  let map' = (map // [((x1,y1), '1'),((x2,y2),'2')])
-      ((_,_),(w,h)) = bounds map'
-      printLine _ y = putStrLn (foldl (\l x-> l ++ [map'!(x,y)]) [] [1..w]) 
-  in foldM printLine () [1..h] 
 
 
 -- | Transform the output of "turn" so as to make the returned value
@@ -88,8 +61,8 @@ turn tt map state =
     Right t -> mirror $ playAsFirstPlayer t map (snd state, fst state)
 
 -- | check if it is possible to move along the vector dx,dy
--- if one ends up outside the map then return False, otherwise True
--- todo: check for obstacles, and hitting the other player
+-- if one ends up outside the map or hits an obstacl, or hits
+-- another player, then return False, otherwise True
 -- @map@ - the map
 -- @(dx,dy)@ - the vector
 -- @state@ - game state
@@ -225,6 +198,37 @@ renderAnyGame map (Just (Left x)) = renderGame 1 map x
 renderAnyGame map (Just (Right x)) = renderVictory x
 renderAnyGame map Nothing = picForImage $ string (defAttr ` withForeColor ` red) "Error"
 
+--- test data
+
+testMap :: Map
+testMap = listArray ((1,1),(7,7)) $
+  concat $ transpose [
+    "......."
+  , ".xx.xx."
+  , ".xx.xx."
+  , "......."
+  , ".xx.xx."
+  , ".xx.xx."
+  , "......."]  
+
+testState1 = ((1,1,2,False), (5,5,2,False)) :: GameState
+testState2 = ((4,4,1,False), (5,5,2,False)) :: GameState
+testState3 = ((4,1,1,True), (6,3,1,False)) :: GameState
+
+--- test functions
+
+
+-- |  Print out the dungeon with players
+-- @map@ - the map
+-- @state@ - game state
+printMap :: Map -> GameState -> IO ()
+printMap map ((x1,y1,_,_),(x2,y2,_,_)) =
+  let map' = (map // [((x1,y1), '1'),((x2,y2),'2')])
+      ((_,_),(w,h)) = bounds map'
+      printLine _ y = putStrLn (foldl (\l x-> l ++ [map'!(x,y)]) [] [1..w]) 
+  in foldM printLine () [1..h] 
+
+testRender :: IO ()
 testRender = do
   vty <- mkVty def
   let pic = renderGame 1 testMap ((2,2,2,False),(6,4,2,False))
@@ -232,3 +236,4 @@ testRender = do
   evt <- nextEvent vty  
   shutdown vty
  
+

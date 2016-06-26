@@ -14,8 +14,6 @@ import System.IO
 import Western.Types
 import Western.Game
 
-import System.IO
-
 timeout = 100
 netSize = [8, 7, 6]
 netNum = 50
@@ -26,7 +24,7 @@ thr = 0.6
 bulNum = 2 :: Int
 
 ntLevelSize :: Network -> [Int]
-ntLevelSize n = (map nrows $ ntWeights n) ++ [ncols $ last $ ntWeights n]
+ntLevelSize n = map nrows (ntWeights n) ++ [ncols $ last $ ntWeights n]
 
 boolToFloat :: Bool -> Float
 boolToFloat False = 0
@@ -72,7 +70,7 @@ playGame p1 p2 = result $ foldl makeTurn (Just (Left ((1, 1, bulNum, False), (w,
   makeTurn (Just (Right x)) _ = Just (Right x)
   makeTurn (Just (Left x)) n 
    | n == timeout = Nothing
-   | n `rem` 2 == 0 = turn (Left (decideTurn $ evalNetwork p1 $ makeInput x)) testMap x
+   | even n = turn (Left (decideTurn $ evalNetwork p1 $ makeInput x)) testMap x
    | otherwise = turn (Right (decideTurn $ evalNetwork p2 $ makeInput (snd x, fst x))) testMap x
   result Nothing = (0, 0)
   result (Just (Right Player1Won)) = (1, 0)
@@ -88,9 +86,9 @@ randomCoords map = do
  let b2 = head $ randomRs (0, bulNum) g1 :: Int
  let b1 = head $ randomRs (0, bulNum) g2 :: Int
 
- if ((map ! (x1, y1) /= 'x') && (map ! (x2, y2) /= 'x'))
-  then return ((x1, y1, b1), (x2, y2, b2))
-  else randomCoords map
+ if (map ! (x1, y1) /= 'x') && (map ! (x2, y2) /= 'x')
+   then return ((x1, y1, b1), (x2, y2, b2))
+   else randomCoords map
 
 playRGame :: Network -> Network -> IO (Int, Int)  
 playRGame p1 p2 = do
@@ -100,7 +98,7 @@ playRGame p1 p2 = do
    makeTurn (Just (Right x)) _ = Just (Right x)
    makeTurn (Just (Left x)) n 
     | n == timeout = Nothing
-    | n `rem` 2 == 0 = turn (Left (decideTurn $ evalNetwork p1 $ makeInput x)) testMap x
+    | even n = turn (Left (decideTurn $ evalNetwork p1 $ makeInput x)) testMap x
     | otherwise = turn (Right (decideTurn $ evalNetwork p2 $ makeInput (snd x, fst x))) testMap x
    result Nothing = (0, 0)
    result (Just (Right Player1Won)) = (1, 0)
@@ -109,27 +107,27 @@ playRGame p1 p2 = do
 playRNTurns :: Network -> Network -> Int -> IO [(Maybe (Either GameState Outcome), Int)]
 playRNTurns p1 p2 n = do 
  ((x1, y1, b1), (x2, y2, b2)) <- randomCoords testMap
- return $ gameGoesOn (take n $ iterate makeTurn ((Just (Left ((x1, y1, b1, False), (x2, y2, b2, False)))), 0)) 
-  where
-   makeTurn ((Just (Right x)), m ) = (Just (Right x), m + 1 )
-   makeTurn (Just (Left x), m) 
-    | m `rem` 2 == 0 = (turn (Left (decideTurn $ evalNetwork p1 $ makeInput x)) testMap x, m + 1)
-    | otherwise = (turn (Right (decideTurn $ evalNetwork p2 $ makeInput (snd x, fst x))) testMap x, m + 1)
-   gameGoesOn [] = []
-   gameGoesOn ((Just (Left x), n) : xs) = ((Just (Left x)), n) : (gameGoesOn xs)
-   gameGoesOn ((Just (Right x), n) : xs) = [(Just (Right x), n)]
+ return $ gameGoesOn (take n $ iterate makeTurn (Just (Left ((x1, y1, b1, False), (x2, y2, b2, False))), 0))
+   where
+     makeTurn (Just (Right x), m) = (Just (Right x), m + 1 )
+     makeTurn (Just (Left x), m) 
+       | even m = (turn (Left (decideTurn $ evalNetwork p1 $ makeInput x)) testMap x, m + 1)
+       | otherwise = (turn (Right (decideTurn $ evalNetwork p2 $ makeInput (snd x, fst x))) testMap x, m + 1)
+     gameGoesOn [] = []
+     gameGoesOn ((Just (Left x), n) : xs) = (Just (Left x), n) : gameGoesOn xs
+     gameGoesOn ((Just (Right x), n) : xs) = [(Just (Right x), n)]
 
 
 playNTurns :: Network -> Network -> Int -> [(Maybe (Either GameState Outcome), Int)]
-playNTurns p1 p2 n = gameGoesOn (take n $ iterate makeTurn ((Just (Left ((1, 1, bulNum, False), (w, h, bulNum, False)))), 0)) 
+playNTurns p1 p2 n = gameGoesOn (take n $ iterate makeTurn (Just (Left ((1, 1, bulNum, False), (w, h, bulNum, False))), 0)) 
   where
   ((_,_),(w,h)) = bounds testMap
-  makeTurn ((Just (Right x)), m ) = (Just (Right x), m + 1 )
+  makeTurn (Just (Right x), m ) = (Just (Right x), m + 1 )
   makeTurn (Just (Left x), m) 
-   | m `rem` 2 == 0 = (turn (Left (decideTurn $ evalNetwork p1 $ makeInput x)) testMap x, m + 1)
+   | even m = (turn (Left (decideTurn $ evalNetwork p1 $ makeInput x)) testMap x, m + 1)
    | otherwise = (turn (Right (decideTurn $ evalNetwork p2 $ makeInput (snd x, fst x))) testMap x, m + 1)
   gameGoesOn [] = []
-  gameGoesOn ((Just (Left x), n) : xs) = ((Just (Left x)), n) : (gameGoesOn xs)
+  gameGoesOn ((Just (Left x), n) : xs) = (Just (Left x), n) : gameGoesOn xs
   gameGoesOn ((Just (Right x), n) : xs) = [(Just (Right x), n)]
 
 playTournament :: [Network] -> [Int]
@@ -148,18 +146,18 @@ playRTournament s = do
 takeNRBest :: [Network] -> Int -> IO [Network]
 takeNRBest s n = do
  results <- playRTournament s
- return $ take n $ map fst (sortOn ((*(-1)).snd) $ zip s (results))
+ return $ take n $ map fst (sortOn ((*(-1)).snd) $ zip s results)
 
 takeNBest :: [Network] -> Int -> [Network]
 takeNBest s n =
- take n $ map fst (sortOn ((*(-1)).snd) $ zip s (results))
+ take n $ map fst (sortOn ((*(-1)).snd) $ zip s results)
  where results = playTournament s
 
 netToString :: Network -> String
 netToString n = matrices $ ntWeights n
  where 
  matrices [] = ""
- matrices (x:xs) = (getWord $ toList x) ++ "\n" ++ matrices xs
+ matrices (x:xs) = getWord (toList x) ++ "\n" ++ matrices xs
  getWord s = unwords $ map show s
 
 makeRandomMatrix :: (Int,Int) -> Float -> IO (Matrix Float)
@@ -170,9 +168,8 @@ makeRandomMatrix (i, j) magnitude = do
 makeRandomMatrices :: [Int] -> Float -> IO [Matrix Float]
 makeRandomMatrices s magnitude = do
  let dimlist = zip s $ tail s
- matlist <- mapM (\x->makeRandomMatrix x magnitude) dimlist
- return matlist
-
+ mapM (`makeRandomMatrix` magnitude) dimlist
+ 
 makeRandomNetwork :: [Int] -> IO Network
 makeRandomNetwork s = do
  matlist <- makeRandomMatrices s 1
@@ -182,21 +179,21 @@ perturbNetwork :: Network -> Float -> IO Network
 perturbNetwork n magnitude = do
  let a = ntWeights n
  b <- makeRandomMatrices (ntLevelSize n) magnitude
- return Network {ntWeights = (zipWith (elementwise (+)) a b)}
+ return Network {ntWeights = zipWith (elementwise (+)) a b}
 
 
 
 evolveNet :: [Network] -> IO [Network]
 evolveNet nets = do
  let first = takeNBest nets bestNum
- second <- mapM (\x -> perturbNetwork x modP) first
+ second <- mapM (`perturbNetwork` modP) first
  third <- mapM (\x -> makeRandomNetwork netSize) [1..(netNum - 2*bestNum)]
  return $ first ++ second ++ third
 
 evolveRNet :: [Network] -> IO [Network]
 evolveRNet nets = do
  first <- takeNRBest nets bestNum
- second <- mapM (\x -> perturbNetwork x modP) first
+ second <- mapM (`perturbNetwork` modP) first
  third <- mapM (\x -> makeRandomNetwork netSize) [1..(netNum - 2*bestNum)]
  return $ first ++ second ++ third
 --main = testRender
@@ -204,14 +201,14 @@ evolveRNet nets = do
 trainNet :: IO Network
 trainNet = do
  first <- mapM (\x -> makeRandomNetwork netSize) [1..netNum]
- x <- (foldr (.) id (replicate iterNum (\x -> x >>= evolveNet))) (return first)
+ x <- foldr (.) id (replicate iterNum (>>= evolveNet)) (return first)
  return (head x)
 
 
 trainRNet :: IO Network
 trainRNet = do
  first <- mapM (\x -> makeRandomNetwork netSize) [1..netNum]
- x <- (foldr (.) id (replicate iterNum (\x -> x >>= evolveRNet))) (return first)
+ x <- foldr (.) id (replicate iterNum (>>= evolveRNet)) (return first)
  return (head x)
 
 

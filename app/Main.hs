@@ -14,6 +14,7 @@ import Western.Network
 import Western.Types
 import Western.Game
 
+drawBattle :: Network -> Network -> Int -> IO ()
 drawBattle x y n = do
   let pics = map (\x -> renderAnyGame testMap (fst x)) $ playNTurns x y n
   vty <- mkVty def
@@ -39,6 +40,7 @@ trainNetP netname vty = do
     return (s', n + 1)
 
 
+drawRBattle :: Network -> Network -> Int -> IO ()
 drawRBattle x y n = do
  game <- playRNTurns x y n
  let pics = map (\x -> renderAnyGame testMap (fst x)) $ game
@@ -64,6 +66,7 @@ readNetFromFile sizes filename = do
   stringsToFloats s = map ( \x -> read x :: Float ) (words s) 
   fromListMy (x,y) s = fromList x y s 
 
+main :: IO ()
 main = do
  vty <- mkVty def
  x <- trainNetP "net1" vty  
