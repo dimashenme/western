@@ -17,7 +17,10 @@ import Western.Game
 timeout = 100
 netSize = [8, 7, 6]
 netNum = 50
+
+-- | Number of iterations
 iterNum = 100
+
 bestNum = 23
 modP = 0.02
 thr = 0.6
