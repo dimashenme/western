@@ -1,13 +1,13 @@
 module Western.Game (
   turn, 
-  renderGame,
+  renderRunningGame,
   testRender,
   testMap,
   Map(..),
   GameState(..),
   Outcome(..),
   Turn(..),
-  renderAnyGame )
+  renderGame )
 where
 
 import Data.List
@@ -178,9 +178,8 @@ renderPlayers map state =
       | otherwise = backgroundFill 1 1 
   in   vertCat (fmap renderLine [1..h])
   
-
-renderGame :: Int -> Map -> GameState -> Picture
-renderGame turn map state =
+renderRunningGame :: Int -> Map -> GameState -> Picture
+renderRunningGame turn map state =
   picForLayers [renderPlayers',renderMap]
   where
     renderPlayers' = renderPlayers map state
@@ -193,10 +192,10 @@ renderVictory :: Outcome -> Picture
 renderVictory (Player1Won) = picForImage $ string (defAttr ` withForeColor ` green) "Player 1 won"
 renderVictory (Player2Won) = picForImage $ string (defAttr ` withForeColor ` green) "Player 2 won"
 
-renderAnyGame :: Map -> Maybe (Either GameState Outcome) -> Picture
-renderAnyGame map (Just (Left x)) = renderGame 1 map x
-renderAnyGame map (Just (Right x)) = renderVictory x
-renderAnyGame map Nothing = picForImage $ string (defAttr ` withForeColor ` red) "Error"
+renderGame :: Map -> Maybe (Either GameState Outcome) -> Picture
+renderGame map (Just (Left x)) = renderRunningGame 1 map x
+renderGame map (Just (Right x)) = renderVictory x
+renderGame map Nothing = picForImage $ string (defAttr `withForeColor` red) "Error"
 
 --- test data
 
@@ -231,7 +230,7 @@ printMap map ((x1,y1,_,_),(x2,y2,_,_)) =
 testRender :: IO ()
 testRender = do
   vty <- mkVty def
-  let pic = renderGame 1 testMap ((2,2,2,False),(6,4,2,False))
+  let pic = renderRunningGame 1 testMap ((2,2,2,False),(6,4,2,False))
   update vty pic
   evt <- nextEvent vty  
   shutdown vty
