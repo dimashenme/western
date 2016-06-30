@@ -1,13 +1,12 @@
 module Western.Game (
   turn, 
-  renderRunningGame,
-  testRender,
   testMap,
+  fov,
+  line, 
   Map(..),
   GameState(..),
   Outcome(..),
-  Turn(..),
-  renderGame )
+  Turn(..)  )
 where
 
 import Data.List
@@ -16,10 +15,6 @@ import Data.Set (Set,member,fromList)
 
 import Control.Monad
 
-import Graphics.Vty
-import Graphics.Vty.Image
-import Graphics.Vty.Attributes
-import Data.Default(def)
 
 
 type Map = Array (Int, Int) Char
@@ -35,9 +30,6 @@ data Outcome = Player1Won | Player2Won deriving (Show, Eq)
 -- | Choices a player can make when taking a turn
 -- Left, Right, Up, Down, Skip, Fire
 data Turn = L | R | U | D | S | Fire deriving (Show, Eq)
-
-
-
 
 -- | Transform the output of "turn" so as to make the returned value
 -- from the perspective of the first player into the returned value
@@ -159,43 +151,6 @@ fov map ((x1,y1,_,s1), (x2,y2,_,s2)) =
   fromList [ (x,y) | x <- [1..w], y <- [1..h], (canShoot map (x,y) (x1,y1)) || (canShoot map (x,y) (x2,y2)) ]
   where ((_,_),(w,h)) = bounds map
 
-renderPlayers :: Map -> GameState -> Image
-renderPlayers map state =
-  let
-    ((x1,y1,b1,s1),(x2,y2,b2,s2)) = state
-    ((_,_),(w,h)) = bounds map    
-    renderLine y = foldl (\l x -> l <|> (visibleChar x y)) emptyImage [1..w]
-    attrFov = Attr{attrForeColor = SetTo blue, attrStyle = Default, attrBackColor = Default}
-    attrPlayer1 False = Attr{attrForeColor = SetTo green, attrStyle = Default, attrBackColor = Default}
-    attrPlayer1 True = Attr{attrForeColor = SetTo red, attrStyle = Default, attrBackColor = Default}
-    attrPlayer2 False = Attr{attrForeColor = SetTo green, attrStyle = Default, attrBackColor = Default}
-    attrPlayer2 True = Attr{attrForeColor = SetTo red, attrStyle = Default, attrBackColor = Default}
-
-    visibleChar x y 
-      | (x == x1) && (y == y1) = char (attrPlayer1 s1) (head $ show b1)
-      | (x == x2) && (y == y2) = char (attrPlayer2 s2) (head $ show b2)
-      | (member (x,y) (fov map state)) = char attrFov (map!(x,y)) 
-      | otherwise = backgroundFill 1 1 
-  in   vertCat (fmap renderLine [1..h])
-  
-renderRunningGame :: Int -> Map -> GameState -> Picture
-renderRunningGame turn map state =
-  picForLayers [renderPlayers',renderMap]
-  where
-    renderPlayers' = renderPlayers map state
-    renderMap =  vertCat (fmap (string defAttr . renderLine)  [1..h])
-    ((x1,y1,b1,s1),(x2,y2,b2,s2)) = state
-    ((_,_),(w,h)) = bounds map
-    renderLine  y = foldl (\l x-> l ++ [map!(x,y)]) [] [1..w]
-
-renderVictory :: Outcome -> Picture
-renderVictory (Player1Won) = picForImage $ string (defAttr ` withForeColor ` green) "Player 1 won"
-renderVictory (Player2Won) = picForImage $ string (defAttr ` withForeColor ` green) "Player 2 won"
-
-renderGame :: Map -> Maybe (Either GameState Outcome) -> Picture
-renderGame map (Just (Left x)) = renderRunningGame 1 map x
-renderGame map (Just (Right x)) = renderVictory x
-renderGame map Nothing = picForImage $ string (defAttr `withForeColor` red) "Error"
 
 --- test data
 
@@ -226,13 +181,3 @@ printMap map ((x1,y1,_,_),(x2,y2,_,_)) =
       ((_,_),(w,h)) = bounds map'
       printLine _ y = putStrLn (foldl (\l x-> l ++ [map'!(x,y)]) [] [1..w]) 
   in foldM printLine () [1..h] 
-
-testRender :: IO ()
-testRender = do
-  vty <- mkVty def
-  let pic = renderRunningGame 1 testMap ((2,2,2,False),(6,4,2,False))
-  update vty pic
-  evt <- nextEvent vty  
-  shutdown vty
- 
-

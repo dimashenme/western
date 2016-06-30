@@ -16,11 +16,12 @@ import System.IO
 
 import Graphics.Vty
 import Graphics.Vty.Image
+import Graphics.Vty.Picture
 import Graphics.Vty.Attributes
-
 
 import Western.Network
 import Western.Game
+import Western.Render
 
 
 -- | trains a network and shows progress on
@@ -57,17 +58,17 @@ trainNetAndShowProgress r m netname vty = do
    evolveAndShowProgress Nothing _ = return Nothing
 
 drawBattle :: Bool -> Map -> Network -> Network -> Int -> IO ()
-drawBattle r m x y n = do
-  game <- evalRandIO $ playNTurns r m x y n
-  let pics = map (renderGame testMap . fst)  game
+drawBattle r m n1 n2 n = do
+  !game <- evalRandIO $ playNTurns r m n1 n2 n
+  let pics = map (renderGame testMap . fst) game
   vty <- mkVty def
-  mapM_ (drawAndWait vty) pics
+  mapM_ (drawAndWait vty) (zip pics [1..n])
   evt <- nextEvent vty
   shutdown vty
   where 
-    drawAndWait scr pic = do
-      update scr pic
-      threadDelay 100000
+    drawAndWait vty (!pic,n) = do
+      update vty $ addToBottom pic $ translateY 11 $ string defAttr $ "turn number " ++ show n
+      threadDelay 300000
 
 writeNetToFile :: Network -> String -> IO ()
 writeNetToFile net filename = 
@@ -82,22 +83,24 @@ readNetFromFile sizes filename = do
   stringsToFloats s = map ( \x -> read x :: Float ) (words s) 
   fromListMy (x,y) s = Data.Matrix.fromList x y s 
 
-main :: IO ()
-main = do
-  vty <- mkVty def
-  nw <- trainNetAndShowProgress True testMap "net1" vty
-
-  case nw of
-    Just network -> do
-      writeNetToFile network "net1"
-      nextEvent vty
-      return ()
-    Nothing -> return ()
-  shutdown vty
-
 -- main :: IO ()
 -- main = do
---  n1 <- readNetFromFile netSize "net1"
---  n2 <- readNetFromFile netSize "net2"
+--   vty <- mkVty def
+--   nw <- trainNetAndShowProgress True testMap name vty
 
---  drawBattle True testMap n1 n2 100
+--   case nw of
+--     Just network -> do
+--       writeNetToFile network name
+--       nextEvent vty
+--       return ()
+--     Nothing -> return ()
+--   shutdown vty
+--   where
+--     name = "net2"
+
+main :: IO ()
+main = do
+ n1 <- readNetFromFile netSize "net1"
+ n2 <- readNetFromFile netSize "net2"
+
+ drawBattle True testMap n1 n2 20

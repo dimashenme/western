@@ -2,7 +2,7 @@ name:                western
 version:             0.1.0.0
 synopsis:            Train artificial neural networks to play a shootout turn-based game against each other
 description:         Please see README.md
-homepage:            https://github.com/githubuser/western#readme
+homepage:            https://github.com/dimashenme/western#readme
 license:             BSD3
 license-file:        LICENSE
 author:              Kostya Tolmachev, Dima Sustretov
@@ -15,14 +15,14 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Western.Network, Western.Game
-  build-depends:       array >= 0.5.1.0
+  exposed-modules:     Western.Network, Western.Game, Western.Render
+  build-depends:       MonadRandom
+                     , array >= 0.5.1.0
                      , base >= 4.7 && < 5
                      , containers >= 0.5.6.2
                      , containers >= 0.5.6.2
                      , data-default >= 0.5.3
                      , matrix
-                     , MonadRandom
                      , random >= 1.1
                      , stm >= 2.4.4.1
                      , vty
@@ -31,13 +31,14 @@ library
 executable western-exe
   hs-source-dirs:      app
   main-is:             Main.hs
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
-  build-depends:       array >= 0.5.1.0
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -fwarn-incomplete-patterns
+  build-depends:       MonadRandom
+                     , QuickCheck
+                     , array >= 0.5.1.0
                      , base
                      , containers >= 0.5.6.2
                      , data-default >= 0.5.3
                      , matrix
-                     , MonadRandom
                      , random >= 1.1
                      , stm >= 2.4.4.1
                      , vty
@@ -48,12 +49,12 @@ test-suite western-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
-  build-depends:       array >= 0.5.1.0
+  build-depends:       MonadRandom
+                     , QuickCheck >= 2.8.2
+                     , array >= 0.5.1.0
                      , base
                      , containers >= 0.5.6.2
-                     , containers >= 0.5.6.2
                      , data-default >= 0.5.3
-                     , MonadRandom
                      , random >= 1.1
                      , stm >= 2.4.4.1
                      , western
@@ -62,4 +63,4 @@ test-suite western-test
 
 source-repository head
   type:     git
-  location: https://github.com/githubuser/western
+  location: https://github.com/dimashenme/western

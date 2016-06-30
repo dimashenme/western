@@ -1,6 +1,5 @@
 module Western.Network where
 
-
 import Data.Matrix hiding ((!))
 import Data.Array
 import Data.List hiding (transpose)
@@ -10,8 +9,6 @@ import Control.Monad.Random  hiding (fromList)
 import Control.Concurrent
 
 import Western.Game
-
-
 
 -- | Turn number after which a training game is terminated
 timeout = 100
@@ -32,13 +29,7 @@ thr = 0.6
 -- | Initial number of bullets
 bulNum = 2 :: Int
 
-
-
-data Network = Network {  ntWeights :: [Matrix Float] }
-
-
-ntLevelSize :: Network -> [Int]
-ntLevelSize n = map nrows (ntWeights n) ++ [ncols $ last $ ntWeights n]
+-- helper functions
 
 boolToFloat :: Bool -> Float
 boolToFloat False = 0
@@ -47,16 +38,42 @@ boolToFloat True = 1
 stdNeuron :: Float -> Float
 stdNeuron x = 1 / (1 + exp (-x))
 
-evalNetwork :: Network -> [Float] -> [Float] -- evaluate network on a given input
+-- | An neural network is given by a collection of weights
+data Network = Network {  ntWeights :: [Matrix Float] }
+
+ntLevelSize :: Network -> [Int]
+ntLevelSize n = map nrows (ntWeights n) ++ [ncols $ last $ ntWeights n]
+
+-- | Evaluate network @net@ on a given input @input@
+evalNetwork :: Network -> [Float] -> [Float] 
 evalNetwork net input = foldl evalColumn input (ntWeights net)
   where evalColumn col mat = map stdNeuron $ toList $ multStd (fromLists [col]) mat
 
-makeInput :: GameState -> [Float]
-makeInput ((x1, y1, n1, b1), (x2, y2, n2, b2)) = [fromIntegral x1 / fromIntegral w, fromIntegral y1 / fromIntegral h, fromIntegral n1 / fromIntegral bulNum, boolToFloat b1,  fromIntegral x2 / fromIntegral w, fromIntegral y2 / fromIntegral h, fromIntegral n2 / fromIntegral bulNum, boolToFloat b2]
+-- | Serialize network
+netToString :: Network -> String
+netToString n = matrices $ ntWeights n
+ where 
+ matrices [] = ""
+ matrices (x:xs) = getWord (toList x) ++ "\n" ++ matrices xs
+ getWord s = unwords $ map show s
+
+-- | Convert a game state into an input of the network
+makeInput :: Map -> GameState -> [Float]
+makeInput m ((x1, y1, n1, b1), (x2, y2, n2, b2)) = [
+       fromIntegral x1 / fromIntegral w
+     , fromIntegral y1 / fromIntegral h
+     , fromIntegral n1 / fromIntegral bulNum
+     , boolToFloat b1
+     , fromIntegral x2 / fromIntegral w
+     , fromIntegral y2 / fromIntegral h
+     , fromIntegral n2 / fromIntegral bulNum
+     , boolToFloat b2
+     ] 
   where 
-  ((_,_),(w,h)) = bounds testMap
+  ((_,_),(w,h)) = bounds m
 
-
+-- | Turn the output of the network into a particular turn
+-- made by a player
 decideTurn :: [Float] -> Turn
 decideTurn [l, r, u, d, s, f] 
  | f > thr = Fire
@@ -76,13 +93,6 @@ decideTurn [l, r, u, d, s, f]
  | u > thr = U
  | d > thr = D
  | otherwise = S
-
-netToString :: Network -> String
-netToString n = matrices $ ntWeights n
- where 
- matrices [] = ""
- matrices (x:xs) = getWord (toList x) ++ "\n" ++ matrices xs
- getWord s = unwords $ map show s
 
 -- | Generate two distinct random coordinates for inital position of players
 -- the coordinates are those of an empty square
@@ -106,15 +116,16 @@ playGame :: (RandomGen g) => Bool -> Map -> Network -> Network -> Rand g (Int, I
 playGame random m p1 p2 = do  
   let ((_,_),(w,h)) = bounds m
   ((x1, y1, b1), (x2, y2, b2)) <- if random
-                                 then return ((1, 1, bulNum), (w, h, bulNum))
-                                 else randomCoords testMap
+                                  then randomCoords m
+                                  else return ((1, 1, bulNum), (w, h, bulNum))
   return (result $ foldl makeTurn (Just (Left ((x1, y1, b1, False), (x2, y2, b2, False)))) [0..timeout])  
  where 
    makeTurn (Just (Right x)) _ = Just (Right x)
    makeTurn (Just (Left x)) n 
     | n == timeout = Nothing
-    | even n = turn (Left (decideTurn $ evalNetwork p1 $ makeInput x)) testMap x
-    | otherwise = turn (Right (decideTurn $ evalNetwork p2 $ makeInput (snd x, fst x))) testMap x
+    | even n = turn (Left (decideTurn $ evalNetwork p1 $ makeInput m x)) m x
+    | otherwise = turn (Right (decideTurn $ evalNetwork p2 $ makeInput m (snd x, fst x))) m x
+--   makeTurn Nothing = Nothing
    result Nothing = (0, 0)
    result (Just (Right Player1Won)) = (1, 0)
    result (Just (Right Player2Won)) = (0, 1)
@@ -126,14 +137,14 @@ playNTurns :: (RandomGen g) => Bool -> Map -> Network -> Network -> Int -> Rand 
 playNTurns random m p1 p2 n = do 
   let ((_,_),(w,h)) = bounds m
   ((x1, y1, b1), (x2, y2, b2)) <- if random
-                                  then return ((1, 1, bulNum), (w, h, bulNum))
-                                  else randomCoords testMap
-  return $ gameGoesOn (take n $ iterate makeTurn (Just (Left ((1, 1, bulNum, False), (w, h, bulNum, False))), 0)) 
+                                  then randomCoords m
+                                  else return ((1, 1, bulNum), (w, h, bulNum))  
+  return $ gameGoesOn (take n $ iterate makeTurn (Just (Left ((x1, y1, b1, False), (x2, y2, b2, False))), 0)) 
   where
-    makeTurn (Just (Right x), m ) = (Just (Right x), m + 1 )
-    makeTurn (Just (Left x), m) 
-      | even m = (turn (Left (decideTurn $ evalNetwork p1 $ makeInput x)) testMap x, m + 1)
-      | otherwise = (turn (Right (decideTurn $ evalNetwork p2 $ makeInput (snd x, fst x))) testMap x, m + 1)
+    makeTurn (Just (Right x), n ) = (Just (Right x), n + 1 )
+    makeTurn (Just (Left x), n) 
+      | even n = (turn (Left (decideTurn $ evalNetwork p1 $ makeInput m x)) m x, n + 1)
+      | otherwise = (turn (Right (decideTurn $ evalNetwork p2 $ makeInput m (snd x, fst x))) m x, n + 1)
     gameGoesOn [] = []
     gameGoesOn ((Just (Left x), n) : xs) = (Just (Left x), n) : gameGoesOn xs
     gameGoesOn ((Just (Right x), n) : xs) = [(Just (Right x), n)]
