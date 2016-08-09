@@ -10,7 +10,10 @@ import Control.Concurrent.STM.TChan
 import Control.Monad.STM
 
 import Control.Monad
+import Control.Monad.State.Lazy
 import Control.Monad.Random
+
+import Control.Monad.Trans.Maybe
 
 import System.IO
 
@@ -23,39 +26,66 @@ import Western.Network
 import Western.Game
 import Western.Render
 
+import Western.Training as T
 
--- | trains a network and shows progress on
--- the given vty. The training can be interrupted
--- with an `esc` keypress
--- @r@ is a flag of whether to use a random starting position
--- @m@ is the map to use
-trainNetAndShowProgress :: Bool -> Map -> String -> Vty -> IO (Maybe Network)
-trainNetAndShowProgress r m netname vty = do
- -- initial pool of random networks
- first <- mapM (\_ -> evalRandIO $ makeRandomNetwork netSize) [1..netNum]
- x <- foldM evolveAndShowProgress (Just first) [1..iterNum]
- return $ liftM head x
-  where
-   evChan = _eventChannel $ inputIface vty
-   evolveAndShowProgress :: Maybe [Network]  -> Int -> IO (Maybe [Network])
-   evolveAndShowProgress (Just !s) n = do
-    s' <- evalRandIO $ evolveNet True m s
-    let progress = string (defAttr `withForeColor` green) (show n ++ "/"
-                                                             ++ show iterNum
-                                                             ++ " tournaments played for "
-                                                             ++ netname ++ ".")        
-    let esc = string (defAttr `withForeColor` red) "Press `Esc` to quit"
-    update vty $ picForImage $ progress `vertJoin` esc
-    nokeypress <-  atomically $ isEmptyTChan evChan
-    if nokeypress
-      then return $  Just s'
-      else
-      do
-        evt <- nextEvent vty
-        case evt of
-          EvKey KEsc [] -> return Nothing
-          _ -> return $ Just s'
-   evolveAndShowProgress Nothing _ = return Nothing
+
+-- show progress
+showProgress :: (RandomGen g) =>
+     Int                    -- ^ current tournament
+  -> Int                    -- ^ overall # of tournaments
+  -> String                 -- ^ network name 
+  -> Vty                    -- ^ vty to use
+  -> Protocol g (Maybe ())
+showProgress n nmax netname vty = liftIO $ do
+  let evChan = _eventChannel $ inputIface vty
+  let progress = string (defAttr `withForeColor` green) $
+        (show n ++ "/"
+          ++ show nmax
+          ++ " tournaments played for "
+          ++ netname ++ ".")
+  let esc = string (defAttr `withForeColor` red) $
+        "Press `Esc` to quit"
+  update vty $ picForImage $ progress `vertJoin` esc
+  nokeypress <-  atomically $ isEmptyTChan evChan
+  if nokeypress
+    then return $  Just ()
+    else
+    do
+      evt <- nextEvent vty
+      case evt of
+        EvKey KEsc [] -> return Nothing
+        _ -> return $ Just ()
+
+
+train :: (RandomGen g) =>
+     Vty
+  -> String
+  -> Protocol g ()
+train vty netname = do
+  populate 20  
+  result <- runMaybeT $ forM_ [1..100] $ \n -> do
+    lift tournament 
+    MaybeT $ showProgress n 100 netname vty
+  case result of
+    Just _ -> do
+      liftIO $ putStrLn "\ntrained. Press a key"
+      nws <- getNetworks
+      write (head nws) netname
+      liftIO $ do
+        nextEvent vty
+        return ()
+    Nothing -> liftIO $ do
+      putStrLn "\naborted. Press a key"
+      nextEvent vty
+      return ()
+
+fight  :: (RandomGen g) =>
+     Vty
+  -> String
+  -> String
+  -> Protocol g ()
+fight vty net1 net2 = undefined
+  
 
 drawBattle :: Bool -> Map -> Network -> Network -> Int -> IO ()
 drawBattle r m n1 n2 n = do
@@ -70,37 +100,19 @@ drawBattle r m n1 n2 n = do
       update vty $ addToBottom pic $ translateY 11 $ string defAttr $ "turn number " ++ show n
       threadDelay 300000
 
-writeNetToFile :: Network -> String -> IO ()
-writeNetToFile net filename = 
- writeFile filename (netToString net)
+main = do
+  vty <- mkVty def
+  runProtocol (train vty "foo") testMap
+  shutdown vty
 
-readNetFromFile :: [Int] -> String -> IO Network
-readNetFromFile sizes filename = do
- mats <- readFile filename
- let nums = map stringsToFloats (lines mats)
- return Network {ntWeights = zipWith fromListMy (zip sizes $ tail sizes) nums}
- where 
-  stringsToFloats s = map ( \x -> read x :: Float ) (words s) 
-  fromListMy (x,y) s = Data.Matrix.fromList x y s 
 
 -- main :: IO ()
 -- main = do
---   vty <- mkVty def
---   nw <- trainNetAndShowProgress True testMap name vty
+--  n1 <- readNetFromFile netSize "net1"
+--  n2 <- readNetFromFile netSize "net2"
 
---   case nw of
---     Just network -> do
---       writeNetToFile network name
---       nextEvent vty
---       return ()
---     Nothing -> return ()
---   shutdown vty
---   where
---     name = "net2"
+--  vty <- mkVty def
+--  drawBattle True testMap n1 n2 20
+--  nextEvent vty
+--  shutdown vty
 
-main :: IO ()
-main = do
- n1 <- readNetFromFile netSize "net1"
- n2 <- readNetFromFile netSize "net2"
-
- drawBattle True testMap n1 n2 20
